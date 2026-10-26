@@ -813,6 +813,8 @@ function getUrlConfig() {
       if (/^[A-J][1-4]?$/i.test(item)) {
         return item.toUpperCase() + " 款";
       }
+      if (ALL_PRESETS.includes(item)) return item;
+      if (ALL_PRESETS.includes(item + " 款")) return item + " 款";
       return item.endsWith("款") ? item : item + " 款";
     }).filter(Boolean);
   }
@@ -1129,8 +1131,12 @@ copyLinkBtn.onclick = async () => {
   expiredCard.hidden = true;
   dateBadge.textContent = `${currentToday.short} 限定`;
 
-  // 取得基礎網址
-  let baseUrl = window.location.href.split("?")[0].split("#")[0];
+  // 預設官方正式網址（確保在本機開啟或在任何環境點擊，都能複製出正確的線上客人連結）
+  const OFFICIAL_SITE_URL = "https://a0952015080-netizen.github.io/wuyi-burger/";
+  let baseUrl = OFFICIAL_SITE_URL;
+  if (window.location.hostname && window.location.hostname.includes("github.io")) {
+    baseUrl = window.location.href.split("?")[0].split("#")[0];
+  }
 
   const params = new URLSearchParams();
   const shortStyles = activeStyles.map(s => s.replace(/ 款$/, ""));
