@@ -1221,11 +1221,8 @@ if (syncGithubBtn) {
       async function getFreshSha() {
         const getUrl = "https://api.github.com/repos/" + repo + "/contents/" + filePath + "?ref=" + branch + "&_t=" + Date.now();
         const getRes = await fetch(getUrl, {
-          cache: "no-store",
           headers: {
-            "Authorization": "Bearer " + token,
-            "Accept": "application/vnd.github.v3+json",
-            "Cache-Control": "no-cache"
+            "Authorization": "Bearer " + token
           }
         });
         if (getRes.ok) {
@@ -1258,7 +1255,6 @@ if (syncGithubBtn) {
         method: "PUT",
         headers: {
           "Authorization": "Bearer " + token,
-          "Accept": "application/vnd.github.v3+json",
           "Content-Type": "application/json"
         },
         body: JSON.stringify(putBody)
