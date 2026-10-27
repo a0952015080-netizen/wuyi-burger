@@ -1217,19 +1217,25 @@ if (syncGithubBtn) {
       const repo = "a0952015080-netizen/wuyi-burger";
       const filePath = "burger-config.json";
       const branch = "main";
-      const getUrl = "https://api.github.com/repos/" + repo + "/contents/" + filePath + "?ref=" + branch;
 
-      let currentSha = null;
-      const getRes = await fetch(getUrl, {
-        headers: {
-          "Authorization": "Bearer " + token,
-          "Accept": "application/vnd.github.v3+json"
+      async function getFreshSha() {
+        const getUrl = "https://api.github.com/repos/" + repo + "/contents/" + filePath + "?ref=" + branch + "&_t=" + Date.now();
+        const getRes = await fetch(getUrl, {
+          cache: "no-store",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Accept": "application/vnd.github.v3+json",
+            "Cache-Control": "no-cache"
+          }
+        });
+        if (getRes.ok) {
+          const fileData = await getRes.json();
+          return fileData.sha;
         }
-      });
-      if (getRes.ok) {
-        const fileData = await getRes.json();
-        currentSha = fileData.sha;
+        return null;
       }
+
+      let currentSha = await getFreshSha();
 
       const configPayload = {
         styles: activeStyles,
@@ -1241,14 +1247,14 @@ if (syncGithubBtn) {
       const base64Content = btoa(unescape(encodeURIComponent(jsonContent)));
 
       const putUrl = "https://api.github.com/repos/" + repo + "/contents/" + filePath;
-      const putBody = {
+      let putBody = {
         message: "update: 店家更新今日漢堡盒款式 (" + new Date().toLocaleDateString('zh-TW') + " " + new Date().toLocaleTimeString('zh-TW') + ")",
         content: base64Content,
         branch: branch
       };
       if (currentSha) putBody.sha = currentSha;
 
-      const putRes = await fetch(putUrl, {
+      let putRes = await fetch(putUrl, {
         method: "PUT",
         headers: {
           "Authorization": "Bearer " + token,
@@ -1257,6 +1263,22 @@ if (syncGithubBtn) {
         },
         body: JSON.stringify(putBody)
       });
+
+      // 防呆：若遇到 SHA 不符 (409 Conflict)，立即自動重新獲取最新 SHA 重試一次
+      if (putRes.status === 409) {
+        console.warn("SHA 衝突，自動重新獲取最新 SHA 重試...");
+        currentSha = await getFreshSha();
+        if (currentSha) putBody.sha = currentSha;
+        putRes = await fetch(putUrl, {
+          method: "PUT",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(putBody)
+        });
+      }
 
       if (!putRes.ok) {
         const errJson = await putRes.json().catch(() => ({}));
