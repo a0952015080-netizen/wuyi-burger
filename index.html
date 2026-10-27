@@ -624,8 +624,20 @@
   </label>
 
   <div class="admin-actions">
-    <button type="button" id="copyLinkBtn" class="primary">🔗 複製全客人生效連結</button>
+    <button type="button" id="syncGithubBtn" class="primary" style="background:#24292F; color:#fff; width:100%; margin-bottom:8px; font-weight:bold; padding:13px; border-radius:12px; border:none; cursor:pointer; font-size:14px; box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+      🚀 儲存並自動推送到 GitHub（同網址生效）
+    </button>
+    <button type="button" id="copyLinkBtn" class="secondary">🔗 備用：複製全客人生效連結（含參數）</button>
     <button type="button" id="copyHtmlBtn" class="secondary">📋 亦可產生並複製今日 HTML 程式碼</button>
+  </div>
+
+  <div style="margin-top:12px; padding:10px 12px; background:#f4ece7; border-radius:10px; font-size:12px; border:1px solid #eadbd3;">
+    <div style="font-weight:bold; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
+      <span>🔑 GitHub Token 設定（只需填一次）</span>
+      <span id="burgerTokenStatus" style="font-size:11px; color:#2e7d32; font-weight:bold;"></span>
+    </div>
+    <input type="password" id="burgerTokenInput" placeholder="請貼上 ghp_ 開頭 Token" style="width:100%; padding:7px 10px; font-family:monospace; font-size:12px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box; outline:none; background:#fff;" />
+    <div style="color:#888; font-size:10px; margin-top:3px;">🔒 Token 僅安全存於您手機的瀏覽器中，客人絕看不到</div>
   </div>
 
   <div class="copy-box" id="copyBox" hidden>
@@ -1119,6 +1131,157 @@ async function copyTextToClipboard(text) {
   }
   return ok;
 }
+
+// ==================== GitHub API 自動同步功能（免進 GitHub、同網址生效） ====================
+function applyConfigAndRender(newStyles, newValidDate) {
+  if (newStyles && Array.isArray(newStyles) && newStyles.length > 0) {
+    config.styles = newStyles;
+    selectedPresets = [];
+    customInputs.forEach(input => { input.value = ""; });
+    let customIndex = 0;
+    config.styles.forEach(item => {
+      if (ALL_PRESETS.includes(item)) {
+        selectedPresets.push(item);
+      } else if (customIndex < customInputs.length) {
+        customInputs[customIndex].value = item;
+        customIndex++;
+      }
+    });
+    renderAllAdminButtons();
+    renderSelect();
+  }
+  if (newValidDate !== undefined) {
+    config.validDate = newValidDate;
+  }
+  if (config.validDate) {
+    const parts = config.validDate.split("-");
+    const shortValid = `${Number(parts[1])}/${Number(parts[2])}`;
+    dateBadge.textContent = `${shortValid} 限定`;
+    if (config.validDate !== todayInfo.full) {
+      activeContent.hidden = true;
+      expiredCard.hidden = false;
+      document.getElementById("expiredDateText").textContent = shortValid;
+    } else {
+      activeContent.hidden = false;
+      expiredCard.hidden = true;
+    }
+  } else {
+    dateBadge.textContent = `${todayInfo.short} 限定`;
+    activeContent.hidden = false;
+    expiredCard.hidden = true;
+  }
+}
+
+async function loadRemoteBurgerConfig() {
+  try {
+    const res = await fetch('./burger-config.json?_t=' + Date.now());
+    if (res.ok) {
+      const remote = await res.json();
+      applyConfigAndRender(remote.styles, remote.validDate);
+      console.log('成功從 burger-config.json 載入今日款式！');
+    }
+  } catch (e) {
+    console.warn('無法取得遠端 burger-config.json，使用預設值', e);
+  }
+}
+
+const syncGithubBtn = document.getElementById("syncGithubBtn");
+const burgerTokenInput = document.getElementById("burgerTokenInput");
+const burgerTokenStatus = document.getElementById("burgerTokenStatus");
+
+const savedBurgerToken = localStorage.getItem("wuyi_gh_token") || "";
+if (burgerTokenInput) burgerTokenInput.value = savedBurgerToken;
+if (savedBurgerToken && burgerTokenStatus) burgerTokenStatus.textContent = "已設定 Token ✓";
+
+if (syncGithubBtn) {
+  syncGithubBtn.onclick = async () => {
+    const token = (burgerTokenInput ? burgerTokenInput.value.trim() : "") || localStorage.getItem("wuyi_gh_token") || "";
+    if (!token) {
+      alert("請在下方輸入您的 GitHub Token (ghp_...) 才能自動推送到 GitHub 喔！");
+      if (burgerTokenInput) burgerTokenInput.focus();
+      return;
+    }
+    localStorage.setItem("wuyi_gh_token", token);
+
+    const activeStyles = getActiveStyles();
+    const currentToday = getTodayInfo();
+    const useLock = lockDateChk.checked;
+    const validDateVal = useLock ? currentToday.full : "";
+
+    applyConfigAndRender(activeStyles, validDateVal);
+
+    syncGithubBtn.disabled = true;
+    syncGithubBtn.textContent = "⏳ 正在連線 GitHub API 更新中...";
+
+    try {
+      const repo = "a0952015080-netizen/wuyi-burger";
+      const filePath = "burger-config.json";
+      const branch = "main";
+      const getUrl = "https://api.github.com/repos/" + repo + "/contents/" + filePath + "?ref=" + branch;
+
+      let currentSha = null;
+      const getRes = await fetch(getUrl, {
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Accept": "application/vnd.github.v3+json"
+        }
+      });
+      if (getRes.ok) {
+        const fileData = await getRes.json();
+        currentSha = fileData.sha;
+      }
+
+      const configPayload = {
+        styles: activeStyles,
+        validDate: validDateVal,
+        updatedAt: new Date().toISOString()
+      };
+
+      const jsonContent = JSON.stringify(configPayload, null, 2);
+      const base64Content = btoa(unescape(encodeURIComponent(jsonContent)));
+
+      const putUrl = "https://api.github.com/repos/" + repo + "/contents/" + filePath;
+      const putBody = {
+        message: "update: 店家更新今日漢堡盒款式 (" + new Date().toLocaleDateString('zh-TW') + " " + new Date().toLocaleTimeString('zh-TW') + ")",
+        content: base64Content,
+        branch: branch
+      };
+      if (currentSha) putBody.sha = currentSha;
+
+      const putRes = await fetch(putUrl, {
+        method: "PUT",
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Accept": "application/vnd.github.v3+json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(putBody)
+      });
+
+      if (!putRes.ok) {
+        const errJson = await putRes.json().catch(() => ({}));
+        throw new Error(errJson.message || ("錯誤碼: " + putRes.status));
+      }
+
+      syncGithubBtn.textContent = "🎉 推送成功！客人開啟同一連結即生效！";
+      copyStatus.textContent = "✅ 已自動同步至 GitHub！共 " + activeStyles.length + " 款" + (useLock ? "，隔日自動鎖定" : "") + "，客人打開原網址即生效！";
+      copyBox.hidden = false;
+      outputField.value = "https://a0952015080-netizen.github.io/wuyi-burger/";
+
+      setTimeout(() => {
+        syncGithubBtn.disabled = false;
+        syncGithubBtn.textContent = "🚀 儲存並自動推送到 GitHub（同網址生效）";
+      }, 3000);
+
+    } catch (err) {
+      alert("同步失敗：" + err.message);
+      syncGithubBtn.disabled = false;
+      syncGithubBtn.textContent = "🚀 儲存並自動推送到 GitHub（同網址生效）";
+    }
+  };
+}
+
+loadRemoteBurgerConfig();
 
 // 動作 1：複製全客人生效連結
 copyLinkBtn.onclick = async () => {
