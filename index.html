@@ -1172,16 +1172,47 @@ function applyConfigAndRender(newStyles, newValidDate) {
   }
 }
 
+// ☁️ 優先連動 Google 試算表雲端今日現貨款式與表單設定，並備選靜態配置
+const GOOGLE_SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzVxDkFO8UDZHUZYhiwGSFsTU4v6Ilbp0mgLXHEiXtDYYv_9p3epdF_y1IoWwSalqVx/exec";
+
 async function loadRemoteBurgerConfig() {
+  // 1. 首選：連動 Google 試算表雲端中心
   try {
-    const res = await fetch('./burger-config.json?_t=' + Date.now());
-    if (res.ok) {
-      const remote = await res.json();
-      applyConfigAndRender(remote.styles, remote.validDate);
-      console.log('成功從 burger-config.json 載入今日款式！');
+    const gasRes = await fetch(GOOGLE_SHEET_API_URL + "?_t=" + Date.now(), { cache: "no-store" });
+    if (gasRes.ok) {
+      const gasJson = await gasRes.json();
+      const data = (gasJson && gasJson.data) ? gasJson.data : gasJson;
+      if (data) {
+        const styles = data.burgerStyles || data.styles;
+        const validDate = data.burgerValidDate || data.validDate;
+        if (Array.isArray(styles) && styles.length > 0) {
+          applyConfigAndRender(styles, validDate);
+          console.log("☁️ 漢堡盒成功連動 Google 試算表最新款式與設定！");
+          return;
+        }
+      }
     }
-  } catch (e) {
-    console.warn('無法取得遠端 burger-config.json，使用預設值', e);
+  } catch(e) {
+    console.warn("Google 試算表連動備援，改走備選網址:", e);
+  }
+
+  const cloudUrls = [
+    `./burger-config.json?_t=${Date.now()}`,
+    `https://raw.githubusercontent.com/a0952015080-netizen/wuyi-burger/main/burger-config.json?_t=${Date.now()}`
+  ];
+
+  for (const url of cloudUrls) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (res.ok) {
+        const remote = await res.json();
+        if (remote && Array.isArray(remote.styles)) {
+          applyConfigAndRender(remote.styles, remote.validDate);
+          console.log('☁️ 漢堡盒表單成功連動總控台最新款式與設定！');
+          break;
+        }
+      }
+    } catch (e) {}
   }
 }
 
@@ -1209,6 +1240,23 @@ if (syncGithubBtn) {
     const validDateVal = useLock ? currentToday.full : "";
 
     applyConfigAndRender(activeStyles, validDateVal);
+
+    // ☁️ 優先同步至 Google 試算表雲端排程中心
+    try {
+      await fetch("https://script.google.com/macros/s/AKfycbzVxDkFO8UDZHUZYhiwGSFsTU4v6Ilbp0mgLXHEiXtDYYv_9p3epdF_y1IoWwSalqVx/exec", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          burgerStyles: activeStyles,
+          burgerValidDate: validDateVal,
+          updatedAt: new Date().toISOString()
+        })
+      });
+      console.log("漢堡盒已成功同步至 Google 試算表雲端！");
+    } catch(e) {
+      console.warn("GAS 漢堡盒同步警告:", e);
+    }
+
 
     syncGithubBtn.disabled = true;
     syncGithubBtn.textContent = "⏳ 正在連線 GitHub API 更新中...";
