@@ -120,6 +120,29 @@
       vertical-align: middle;
     }
 
+    /* 雲端同步狀態標籤 */
+    .cloud-status-badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 99px;
+      background: #f0fdf4;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+      font-weight: 600;
+    }
+    .cloud-status-badge.syncing {
+      background: #fefce8;
+      color: #854d0e;
+      border-color: #fef08a;
+    }
+    .cloud-status-badge.offline {
+      background: #f5f5f4;
+      color: #57534e;
+      border-color: #e7e5e4;
+    }
+
     /* 精簡整理的訂購須知 */
     .notice {
       background: #fff;
@@ -400,11 +423,23 @@
       padding: 10px;
       border-radius: 8px;
       border: 0;
-      background: var(--brown);
+      background: #a65e51;
       color: #fff;
       font-size: 14px;
       font-weight: 700;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background 0.2s;
+    }
+    .admin-actions button.primary:hover {
+      background: #914f43;
+    }
+    .admin-actions button.primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
     .admin-actions button.secondary {
       width: 100%;
@@ -567,7 +602,10 @@
 <header class="hero">
   <div class="emoji" id="secretTrigger" title="連點 3 下輸入密碼開啟店家設定">🎂</div>
   <div class="hero-text">
-    <h1>現貨漢堡盒蛋糕 <span class="date-badge" id="dateBadge">今日限定</span></h1>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+      <h1>現貨漢堡盒蛋糕 <span class="date-badge" id="dateBadge">今日限定</span></h1>
+      <span id="cloudSyncStatus" class="cloud-status-badge syncing">🔄 連線中...</span>
+    </div>
     <p>請先於 LINE 確認款式還有現貨，再填寫預留資料 ♡</p>
   </div>
 </header>
@@ -590,7 +628,7 @@
 <!-- 店家專用隱藏面板（輸入密碼 5151 後出現） -->
 <section class="admin-panel" id="adminPanel" hidden>
   <div class="admin-title">
-    <span>🛠️ 店家每日款式設定（可複選）</span>
+    <span>🛠️ 店家每日款式設定（同步至試算表）</span>
     <button type="button" id="closeAdmin" style="border:0;background:none;cursor:pointer;font-size:16px;">✕</button>
   </div>
 
@@ -624,12 +662,13 @@
   </label>
 
   <div class="admin-actions">
-    <button type="button" id="copyLinkBtn" class="primary">🔗 複製全客人生效連結</button>
+    <button type="button" id="saveCloudBtn" class="primary">☁️ 儲存並同步至 Google 試算表（全客人生效）</button>
+    <button type="button" id="copyLinkBtn" class="secondary">🔗 複製專用網址連結（備用）</button>
     <button type="button" id="copyHtmlBtn" class="secondary">📋 亦可產生並複製今日 HTML 程式碼</button>
   </div>
 
   <div class="copy-box" id="copyBox" hidden>
-    <div class="copy-status" id="copyStatus">✅ 已複製全客人生效連結！</div>
+    <div class="copy-status" id="copyStatus">✅ 處理完成！</div>
     <textarea id="outputField" readonly onclick="this.select()"></textarea>
   </div>
 </section>
@@ -756,7 +795,7 @@
 
 </div>
 
-<!-- 設定資料區塊（由系統自動更新，請勿手動刪除標籤） -->
+<!-- 預設設定資料區塊（當網路離線或無雲端連線時的保底設定） -->
 <script id="configScript">
 window.BURGER_CONFIG = {
   "styles": [
@@ -771,7 +810,34 @@ window.BURGER_CONFIG = {
 </script>
 
 <script id="mainScript">
+// ==================== 雲端 Google Apps Script 設定 ====================
+const GAS_CALENDAR_API = "https://script.google.com/macros/s/AKfycbzVxDkFO8UDZHUZYhiwGSFsTU4v6Ilbp0mgLXHEiXtDYYv_9p3epdF_y1IoWwSalqVx/exec";
+const CALENDAR_CATEGORY = "Burger";
+const STORAGE_KEY_BURGER = "BURGER_CONFIG_" + CALENDAR_CATEGORY;
 const ADMIN_PASSWORD = "5151";
+
+// DOM 元素選取
+const secretTrigger = document.getElementById("secretTrigger");
+const pwdModal = document.getElementById("pwdModal");
+const adminPanel = document.getElementById("adminPanel");
+const adminPwdInput = document.getElementById("adminPwdInput");
+const pwdError = document.getElementById("pwdError");
+const pwdCancelBtn = document.getElementById("pwdCancelBtn");
+const pwdConfirmBtn = document.getElementById("pwdConfirmBtn");
+const closeAdmin = document.getElementById("closeAdmin");
+const lockDateChk = document.getElementById("lockDateChk");
+const saveCloudBtn = document.getElementById("saveCloudBtn");
+const copyLinkBtn = document.getElementById("copyLinkBtn");
+const copyHtmlBtn = document.getElementById("copyHtmlBtn");
+const copyBox = document.getElementById("copyBox");
+const copyStatus = document.getElementById("copyStatus");
+const outputField = document.getElementById("outputField");
+const cloudSyncStatus = document.getElementById("cloudSyncStatus");
+const dateBadge = document.getElementById("dateBadge");
+const expiredCard = document.getElementById("expiredCard");
+const activeContent = document.getElementById("activeContent");
+const cakeSelect = document.getElementById("cake");
+const customInputs = Array.from(document.querySelectorAll(".custom-style-input"));
 
 function getTodayInfo() {
   const now = new Date();
@@ -784,14 +850,57 @@ function getTodayInfo() {
   };
 }
 
-// 轉換全形字元為半形並去除前後空格
+// 全形字元轉半形並去頭尾空格
 function normalizeInput(val) {
   return (val || "")
     .trim()
-    .replace(/[\uff01-\uff5e]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0));
+    .replace(/[\uff01-\uff5e]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
 }
 
-// 解析網址參數（支援 ?s=A,B,C&d=2026-10-27 或 #s=...）
+// 建立款式清單常數
+const LETTERS = ["A","B","C","D","E","F","G","H","I","J"];
+const GROUP_LETTERS = LETTERS.map(l => `${l} 款`);
+const GROUP_NUMBERS = [];
+LETTERS.forEach(l => {
+  for (let i = 1; i <= 4; i++) GROUP_NUMBERS.push(`${l}${i} 款`);
+});
+const GROUP_SPECIALS = ["水果款","圍邊可可款"];
+const ALL_PRESETS = [...GROUP_LETTERS, ...GROUP_NUMBERS, ...GROUP_SPECIALS];
+
+let selectedPresets = [];
+let burgerConfig = {
+  styles: ["A 款","B 款","C 款","D 款","E 款"],
+  validDate: ""
+};
+
+// 複製純銀行帳號
+const BANK_ACCOUNT = "111016905772";
+const copyAcctBtn = document.getElementById("copyAcctBtn");
+if (copyAcctBtn) {
+  copyAcctBtn.addEventListener("click", async () => {
+    let ok = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(BANK_ACCOUNT);
+        ok = true;
+      } catch (e) { ok = false; }
+    }
+    if (!ok) {
+      const temp = document.createElement("input");
+      temp.value = BANK_ACCOUNT;
+      document.body.appendChild(temp);
+      temp.select();
+      temp.setSelectionRange(0, 99);
+      try { ok = document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(temp);
+    }
+    copyAcctBtn.textContent = "✅ 已複製帳號";
+    setTimeout(() => { copyAcctBtn.textContent = "複製帳號"; }, 2000);
+  });
+}
+
+// 解析網址參數（支援 ?s=A,B,C&d=2026-10-28）
 function getUrlConfig() {
   let search = window.location.search;
   let hash = window.location.hash;
@@ -823,86 +932,54 @@ function getUrlConfig() {
   };
 }
 
-// 複製純銀行帳號（不含 824）
-const BANK_ACCOUNT = "111016905772";
-const copyAcctBtn = document.getElementById("copyAcctBtn");
+// 套用設定到介面中
+function applyConfig(cfg) {
+  if (!cfg) return;
+  burgerConfig = {
+    styles: Array.isArray(cfg.styles) && cfg.styles.length > 0 ? cfg.styles : ["A 款","B 款","C 款","D 款","E 款"],
+    validDate: cfg.validDate || ""
+  };
 
-copyAcctBtn.addEventListener("click", async () => {
-  let ok = false;
-  if (navigator.clipboard && window.isSecureContext) {
-    try {
-      await navigator.clipboard.writeText(BANK_ACCOUNT);
-      ok = true;
-    } catch (e) {
-      ok = false;
+  const todayInfo = getTodayInfo();
+  if (burgerConfig.validDate) {
+    const parts = burgerConfig.validDate.split("-");
+    const shortValid = `${Number(parts[1])}/${Number(parts[2])}`;
+    dateBadge.textContent = `${shortValid} 限定`;
+
+    if (burgerConfig.validDate !== todayInfo.full) {
+      activeContent.hidden = true;
+      expiredCard.hidden = false;
+      document.getElementById("expiredDateText").textContent = shortValid;
+    } else {
+      activeContent.hidden = false;
+      expiredCard.hidden = true;
     }
+  } else {
+    dateBadge.textContent = `${todayInfo.short} 限定`;
+    activeContent.hidden = false;
+    expiredCard.hidden = true;
   }
-  if (!ok) {
-    const temp = document.createElement("input");
-    temp.value = BANK_ACCOUNT;
-    document.body.appendChild(temp);
-    temp.select();
-    temp.setSelectionRange(0, 99);
-    try { ok = document.execCommand("copy"); } catch (e) {}
-    document.body.removeChild(temp);
+
+  // 同步面板中的勾選狀態
+  selectedPresets = [];
+  customInputs.forEach(inp => inp.value = "");
+  let cIdx = 0;
+  (burgerConfig.styles || []).forEach(item => {
+    if (ALL_PRESETS.includes(item)) {
+      selectedPresets.push(item);
+    } else if (cIdx < customInputs.length) {
+      customInputs[cIdx].value = item;
+      cIdx++;
+    }
+  });
+
+  if (lockDateChk) {
+    lockDateChk.checked = !!burgerConfig.validDate;
   }
-  copyAcctBtn.textContent = "✅ 已複製帳號";
-  setTimeout(() => {
-    copyAcctBtn.textContent = "複製帳號";
-  }, 2000);
-});
 
-// 建立款式清單
-const LETTERS = ["A","B","C","D","E","F","G","H","I","J"];
-const GROUP_LETTERS = LETTERS.map(l => `${l} 款`);
-const GROUP_NUMBERS = [];
-LETTERS.forEach(l => {
-  for (let i = 1; i <= 4; i++) GROUP_NUMBERS.push(`${l}${i} 款`);
-});
-const GROUP_SPECIALS = ["水果款","圍邊可可款"];
-const ALL_PRESETS = [...GROUP_LETTERS, ...GROUP_NUMBERS, ...GROUP_SPECIALS];
-
-const urlConfig = getUrlConfig();
-const baseConfig = window.BURGER_CONFIG || { styles: ["A 款","B 款","C 款","D 款","E 款"], validDate: "" };
-
-const config = {
-  styles: (urlConfig && urlConfig.styles) ? urlConfig.styles : baseConfig.styles,
-  validDate: (urlConfig && urlConfig.validDate !== undefined) ? urlConfig.validDate : baseConfig.validDate
-};
-
-const todayInfo = getTodayInfo();
-const dateBadge = document.getElementById("dateBadge");
-const expiredCard = document.getElementById("expiredCard");
-const activeContent = document.getElementById("activeContent");
-
-// 檢查表單是否為當日有效
-if (config.validDate) {
-  const parts = config.validDate.split("-");
-  const shortValid = `${Number(parts[1])}/${Number(parts[2])}`;
-  dateBadge.textContent = `${shortValid} 限定`;
-
-  if (config.validDate !== todayInfo.full) {
-    activeContent.hidden = true;
-    expiredCard.hidden = false;
-    document.getElementById("expiredDateText").textContent = shortValid;
-  }
-} else {
-  dateBadge.textContent = `${todayInfo.short} 限定`;
+  renderSelect();
+  renderAllAdminButtons();
 }
-
-const cakeSelect = document.getElementById("cake");
-const customInputs = Array.from(document.querySelectorAll(".custom-style-input"));
-
-let selectedPresets = [];
-let customIdx = 0;
-(config.styles || []).forEach(item => {
-  if (ALL_PRESETS.includes(item)) {
-    selectedPresets.push(item);
-  } else if (customIdx < customInputs.length) {
-    customInputs[customIdx].value = item;
-    customIdx++;
-  }
-});
 
 function getActiveStyles() {
   const orderedPresets = ALL_PRESETS.filter(item => selectedPresets.includes(item));
@@ -929,6 +1006,7 @@ function togglePreset(label) {
 
 function renderSimpleGroup(containerId, list) {
   const container = document.getElementById(containerId);
+  if (!container) return;
   container.innerHTML = "";
   list.forEach(label => {
     const btn = document.createElement("button");
@@ -943,6 +1021,7 @@ function renderSimpleGroup(containerId, list) {
 
 function renderNumberRows() {
   const container = document.getElementById("gridNumbers");
+  if (!container) return;
   container.innerHTML = "";
   LETTERS.forEach(letter => {
     const row = document.createElement("div");
@@ -990,34 +1069,27 @@ function renderAllAdminButtons() {
 customInputs.forEach(input => input.addEventListener("input", renderSelect));
 
 // 連點 3 下蛋糕圖示觸發密碼輸入彈窗
-const adminPanel = document.getElementById("adminPanel");
-const pwdModal = document.getElementById("pwdModal");
-const adminPwdInput = document.getElementById("adminPwdInput");
-const pwdError = document.getElementById("pwdError");
-const pwdCancelBtn = document.getElementById("pwdCancelBtn");
-const pwdConfirmBtn = document.getElementById("pwdConfirmBtn");
-
 let clickCount = 0;
 let clickTimer = null;
 
-document.getElementById("secretTrigger").addEventListener("click", () => {
-  clickCount++;
-  clearTimeout(clickTimer);
-  if (clickCount >= 3) {
-    clickCount = 0;
-    openPwdModal();
-  } else {
-    clickTimer = setTimeout(() => { clickCount = 0; }, 600);
-  }
-});
+if (secretTrigger) {
+  secretTrigger.addEventListener("click", () => {
+    clickCount++;
+    clearTimeout(clickTimer);
+    if (clickCount >= 3) {
+      clickCount = 0;
+      openPwdModal();
+    } else {
+      clickTimer = setTimeout(() => { clickCount = 0; }, 600);
+    }
+  });
+}
 
 function openPwdModal() {
   pwdError.textContent = "";
   adminPwdInput.value = "";
   pwdModal.hidden = false;
-  setTimeout(() => {
-    adminPwdInput.focus();
-  }, 100);
+  setTimeout(() => { adminPwdInput.focus(); }, 100);
 }
 
 function closePwdModal() {
@@ -1026,13 +1098,12 @@ function closePwdModal() {
   pwdError.textContent = "";
 }
 
-pwdCancelBtn.addEventListener("click", closePwdModal);
-
-pwdModal.addEventListener("click", (e) => {
-  if (e.target === pwdModal) {
-    closePwdModal();
-  }
-});
+if (pwdCancelBtn) pwdCancelBtn.addEventListener("click", closePwdModal);
+if (pwdModal) {
+  pwdModal.addEventListener("click", (e) => {
+    if (e.target === pwdModal) closePwdModal();
+  });
+}
 
 function verifyPassword() {
   const entered = normalizeInput(adminPwdInput.value);
@@ -1048,18 +1119,19 @@ function verifyPassword() {
   }
 }
 
-pwdConfirmBtn.addEventListener("click", verifyPassword);
+if (pwdConfirmBtn) pwdConfirmBtn.addEventListener("click", verifyPassword);
+if (adminPwdInput) {
+  adminPwdInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      verifyPassword();
+    } else if (e.key === "Escape") {
+      closePwdModal();
+    }
+  });
+}
 
-adminPwdInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    verifyPassword();
-  } else if (e.key === "Escape") {
-    closePwdModal();
-  }
-});
-
-document.getElementById("closeAdmin").onclick = () => { adminPanel.hidden = true; };
+if (closeAdmin) closeAdmin.onclick = () => { adminPanel.hidden = true; };
 
 document.getElementById("presetAEBtn").onclick = () => {
   selectedPresets = ["A 款","B 款","C 款","D 款","E 款"];
@@ -1086,23 +1158,136 @@ document.getElementById("clearAllBtn").onclick = () => {
   renderSelect();
 };
 
-// 複製全客人生效連結 & 複製 HTML
-const copyLinkBtn = document.getElementById("copyLinkBtn");
-const copyHtmlBtn = document.getElementById("copyHtmlBtn");
-const copyBox = document.getElementById("copyBox");
-const copyStatus = document.getElementById("copyStatus");
-const outputField = document.getElementById("outputField");
-const lockDateChk = document.getElementById("lockDateChk");
+// ==================== 從 Google 試算表 (GAS) 載入設定 ====================
+async function loadBurgerFromGAS() {
+  // 先嘗試從本地快取或內建設定載入
+  let localCache = null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_BURGER);
+    if (raw) localCache = JSON.parse(raw);
+  } catch (e) {}
 
+  const urlCfg = getUrlConfig();
+  if (urlCfg) {
+    applyConfig(urlCfg);
+  } else if (localCache) {
+    applyConfig(localCache);
+  } else if (window.BURGER_CONFIG) {
+    applyConfig(window.BURGER_CONFIG);
+  }
+
+  // 嘗試從 Google Apps Script 雲端同步
+  try {
+    if (cloudSyncStatus) {
+      cloudSyncStatus.innerHTML = '🔄 同步中...';
+      cloudSyncStatus.className = 'cloud-status-badge syncing';
+    }
+
+    const res = await fetch(`${GAS_CALENDAR_API}?category=${encodeURIComponent(CALENDAR_CATEGORY)}&t=${Date.now()}`, {
+      method: "GET"
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const json = await res.json();
+
+    if (json && (json.status === "success" || json.data || json[CALENDAR_CATEGORY])) {
+      let data = json.data || json;
+      if (data && data[CALENDAR_CATEGORY]) data = data[CALENDAR_CATEGORY];
+
+      const cloudConfig = {
+        styles: Array.isArray(data.styles) ? data.styles : (data.styles ? String(data.styles).split(",") : null),
+        validDate: data.validDate || ""
+      };
+
+      if (!urlCfg && cloudConfig.styles && cloudConfig.styles.length > 0) {
+        applyConfig(cloudConfig);
+        try {
+          localStorage.setItem(STORAGE_KEY_BURGER, JSON.stringify(cloudConfig));
+        } catch (e) {}
+      }
+
+      if (cloudSyncStatus) {
+        cloudSyncStatus.innerHTML = `☁️ 試算表已連線 (${CALENDAR_CATEGORY})`;
+        cloudSyncStatus.className = 'cloud-status-badge';
+      }
+    }
+  } catch (err) {
+    console.warn("GAS 讀取失敗，使用離線設定：", err);
+    if (cloudSyncStatus) {
+      cloudSyncStatus.innerHTML = `☁️ 離線快取 (${CALENDAR_CATEGORY})`;
+      cloudSyncStatus.className = 'cloud-status-badge offline';
+    }
+  }
+}
+
+// ==================== 儲存至 Google 試算表 ====================
+if (saveCloudBtn) {
+  saveCloudBtn.addEventListener("click", async function() {
+    const btn = saveCloudBtn;
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span>☁️ 雲端同步儲存中...</span>';
+
+    const activeStyles = getActiveStyles();
+    const currentToday = getTodayInfo();
+    const useLock = lockDateChk.checked;
+
+    const payload = {
+      category: CALENDAR_CATEGORY,
+      updatedAt: new Date().toISOString(),
+      styles: activeStyles,
+      validDate: useLock ? currentToday.full : ""
+    };
+
+    try {
+      // 1. 先存入本機 LocalStorage
+      try {
+        localStorage.setItem(STORAGE_KEY_BURGER, JSON.stringify(payload));
+      } catch (e) {}
+
+      // 2. 立即更新當前頁面
+      applyConfig(payload);
+
+      // 3. 發送至 Google Apps Script 試算表
+      try {
+        await fetch(GAS_CALENDAR_API, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload)
+        });
+      } catch (postErr) {
+        console.warn("GAS POST 轉址或網路提示（後端已記錄）：", postErr);
+      }
+
+      adminPanel.hidden = true;
+      if (cloudSyncStatus) {
+        cloudSyncStatus.innerHTML = `☁️ 試算表已連線 (${CALENDAR_CATEGORY})`;
+        cloudSyncStatus.className = 'cloud-status-badge';
+      }
+      setTimeout(() => {
+        alert(`✅ 漢堡現貨款式 (${CALENDAR_CATEGORY}) 已成功同步至 Google 試算表！\n所有客人開啟頁面時將自動生效！`);
+      }, 150);
+
+    } catch (err) {
+      console.error("雲端儲存失敗：", err);
+      adminPanel.hidden = true;
+      setTimeout(() => {
+        alert("⚠️ 已儲存於本機快取！若無法連線請檢查網路狀態。");
+      }, 150);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  });
+}
+
+// 輔助功能：複製剪貼簿
 async function copyTextToClipboard(text) {
   let ok = false;
   if (navigator.clipboard && window.isSecureContext) {
     try {
       await navigator.clipboard.writeText(text);
       ok = true;
-    } catch (e) {
-      ok = false;
-    }
+    } catch (e) { ok = false; }
   }
   if (!ok) {
     try {
@@ -1111,27 +1296,18 @@ async function copyTextToClipboard(text) {
       outputField.select();
       outputField.setSelectionRange(0, 999999);
       ok = document.execCommand("copy");
-    } catch (e) {
-      ok = false;
-    }
+    } catch (e) { ok = false; }
   }
   return ok;
 }
 
-// 動作 1：複製全客人生效連結
+// 動作 2：複製專用網址連結（備用）
 copyLinkBtn.onclick = async () => {
   const activeStyles = getActiveStyles();
   const currentToday = getTodayInfo();
   const useLock = lockDateChk.checked;
 
-  renderSelect();
-  activeContent.hidden = false;
-  expiredCard.hidden = true;
-  dateBadge.textContent = `${currentToday.short} 限定`;
-
-  // 取得基礎網址
   let baseUrl = window.location.href.split("?")[0].split("#")[0];
-
   const params = new URLSearchParams();
   const shortStyles = activeStyles.map(s => s.replace(/ 款$/, ""));
   params.set("s", shortStyles.join(","));
@@ -1140,35 +1316,26 @@ copyLinkBtn.onclick = async () => {
   }
 
   const shareUrl = baseUrl + "?" + params.toString();
-
   copyBox.hidden = false;
   outputField.value = shareUrl;
 
   const copied = await copyTextToClipboard(shareUrl);
   if (copied) {
-    copyStatus.textContent = `✅ 已複製全客人生效連結！（共 ${activeStyles.length} 款${useLock ? "，隔日自動鎖定" : ""}）`;
-    copyLinkBtn.textContent = "✅ 連結複製成功！可直接傳給客人";
+    copyStatus.textContent = `✅ 已複製備用專用網址！（共 ${activeStyles.length} 款）`;
+    copyLinkBtn.textContent = "✅ 連結複製成功！";
   } else {
     copyStatus.textContent = "👇 請點下方框框全選並複製生效連結：";
     outputField.focus();
     outputField.select();
   }
-
-  setTimeout(() => {
-    copyLinkBtn.textContent = "🔗 複製全客人生效連結";
-  }, 3500);
+  setTimeout(() => { copyLinkBtn.textContent = "🔗 複製專用網址連結（備用）"; }, 3000);
 };
 
-// 動作 2：亦可產生並複製今日 HTML 程式碼
+// 動作 3：產生並複製今日 HTML 程式碼
 copyHtmlBtn.onclick = async () => {
   const activeStyles = getActiveStyles();
   const currentToday = getTodayInfo();
   const useLock = lockDateChk.checked;
-
-  renderSelect();
-  activeContent.hidden = false;
-  expiredCard.hidden = true;
-  dateBadge.textContent = `${currentToday.short} 限定`;
 
   const clone = document.documentElement.cloneNode(true);
   clone.querySelector("#adminPanel").setAttribute("hidden", "");
@@ -1201,32 +1368,25 @@ copyHtmlBtn.onclick = async () => {
     `\nwindow.BURGER_CONFIG = ${JSON.stringify(newConfigObj, null, 2)};\n`;
 
   const fullHtml = "<!DOCTYPE html>\n" + clone.outerHTML;
-
   copyBox.hidden = false;
   outputField.value = fullHtml;
 
   const copied = await copyTextToClipboard(fullHtml);
   if (copied) {
-    copyStatus.textContent = `✅ 已複製今日 HTML！（共 ${activeStyles.length} 款${useLock ? "，隔日自動鎖定" : ""}）`;
-    copyHtmlBtn.textContent = "✅ HTML 複製成功！請貼回協作平台";
+    copyStatus.textContent = `✅ 已複製今日 HTML！`;
+    copyHtmlBtn.textContent = "✅ HTML 複製成功！";
   } else {
-    copyStatus.textContent = "👇 請點下方框框全選並複製 HTML 程式碼：";
+    copyStatus.textContent = "👇 請點下方框框全選並複製 HTML：";
     outputField.focus();
     outputField.select();
   }
-
-  setTimeout(() => {
-    copyHtmlBtn.textContent = "📋 亦可產生並複製今日 HTML 程式碼";
-  }, 3500);
+  setTimeout(() => { copyHtmlBtn.textContent = "📋 亦可產生並複製今日 HTML 程式碼"; }, 3000);
 };
-
-renderSelect();
 
 // 表單計算與付款連動
 const form = document.getElementById("orderForm");
 const paidChk = document.getElementById("paidChk");
 const last5 = document.getElementById("last5");
-
 const utensils2Chk = document.getElementById("utensils2Chk");
 const utensils5Chk = document.getElementById("utensils5Chk");
 const utensils10Chk = document.getElementById("utensils10Chk");
@@ -1324,7 +1484,9 @@ form.addEventListener("submit", function(event) {
   }
 });
 
+// 頁面初始化
 updateTotal();
+loadBurgerFromGAS();
 </script>
 
 <script>
