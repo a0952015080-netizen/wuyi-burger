@@ -92,12 +92,17 @@
       cursor: pointer;
       flex-shrink: 0;
       transition: transform 0.15s ease;
+      -webkit-tap-highlight-color: transparent;
     }
     .hero .emoji:hover {
       transform: scale(1.15);
     }
     .hero .emoji:active {
       transform: scale(0.92);
+    }
+    .hero-text {
+      flex: 1;
+      min-width: 0;
     }
     .hero-text h1 {
       font-size: 17px;
@@ -131,6 +136,8 @@
       color: #166534;
       border: 1px solid #bbf7d0;
       font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     .cloud-status-badge.syncing {
       background: #fefce8;
@@ -225,11 +232,6 @@
       font-size: 15.5px;
       font-weight: 700;
       color: var(--brown);
-      margin-bottom: 4px;
-    }
-    .pwd-desc {
-      font-size: 12px;
-      color: #7a6054;
       margin-bottom: 12px;
     }
     .pwd-input {
@@ -311,7 +313,7 @@
       font-size: 14px;
     }
 
-    /* 店家隱藏設定面板 */
+    /* 店家設定面板 */
     .admin-panel {
       background: #fff8f0;
       border: 2px dashed var(--pink);
@@ -600,7 +602,7 @@
 
 <!-- 頂部標題 -->
 <header class="hero">
-  <div class="emoji" id="secretTrigger" title="連點 3 下輸入密碼開啟店家設定">🎂</div>
+  <div class="emoji" id="secretTrigger">🎂</div>
   <div class="hero-text">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
       <h1>現貨漢堡盒蛋糕 <span class="date-badge" id="dateBadge">今日限定</span></h1>
@@ -610,12 +612,11 @@
   </div>
 </header>
 
-<!-- 密碼輸入彈窗（連點 3 下蛋糕圖案後出現） -->
+<!-- 密碼輸入彈窗 -->
 <div class="modal-overlay" id="pwdModal" hidden>
   <div class="pwd-card">
     <div class="pwd-icon">🎂</div>
     <div class="pwd-title">店家管理員身分驗證</div>
-    <div class="pwd-desc">請輸入 4 位數管理密碼進入款式設定</div>
     <input type="password" id="adminPwdInput" class="pwd-input" inputmode="numeric" placeholder="請輸入密碼" maxlength="10" autocomplete="off" />
     <div class="pwd-error" id="pwdError"></div>
     <div class="pwd-actions">
@@ -625,7 +626,7 @@
   </div>
 </div>
 
-<!-- 店家專用隱藏面板（輸入密碼 5151 後出現） -->
+<!-- 店家專用設定面板 -->
 <section class="admin-panel" id="adminPanel" hidden>
   <div class="admin-title">
     <span>🛠️ 店家每日款式設定（同步至試算表）</span>
@@ -850,12 +851,32 @@ function getTodayInfo() {
   };
 }
 
+// 正規化日期字串（防止 Google 試算表回傳 ISO 日期格式導致解析異常）
+function normalizeDateStr(raw) {
+  if (!raw) return "";
+  const str = String(raw).trim();
+  const match = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (match) {
+    return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+  }
+  if (str.includes("T")) {
+    const dt = new Date(str);
+    if (!isNaN(dt.getTime())) {
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, "0");
+      const d = String(dt.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+  }
+  return str;
+}
+
 // 全形字元轉半形並去頭尾空格
 function normalizeInput(val) {
   return (val || "")
     .trim()
     .replace(/[\uff01-\uff5e]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-    .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+    .replace(/\u3000/g, " ");
 }
 
 // 建立款式清單常數
@@ -928,7 +949,7 @@ function getUrlConfig() {
 
   return {
     styles: parsedStyles.length > 0 ? parsedStyles : null,
-    validDate: rawDate || ""
+    validDate: normalizeDateStr(rawDate)
   };
 }
 
@@ -937,13 +958,13 @@ function applyConfig(cfg) {
   if (!cfg) return;
   burgerConfig = {
     styles: Array.isArray(cfg.styles) && cfg.styles.length > 0 ? cfg.styles : ["A 款","B 款","C 款","D 款","E 款"],
-    validDate: cfg.validDate || ""
+    validDate: normalizeDateStr(cfg.validDate)
   };
 
   const todayInfo = getTodayInfo();
   if (burgerConfig.validDate) {
     const parts = burgerConfig.validDate.split("-");
-    const shortValid = `${Number(parts[1])}/${Number(parts[2])}`;
+    const shortValid = parts.length === 3 ? `${Number(parts[1])}/${Number(parts[2])}` : burgerConfig.validDate;
     dateBadge.textContent = `${shortValid} 限定`;
 
     if (burgerConfig.validDate !== todayInfo.full) {
@@ -967,7 +988,7 @@ function applyConfig(cfg) {
   (burgerConfig.styles || []).forEach(item => {
     if (ALL_PRESETS.includes(item)) {
       selectedPresets.push(item);
-    } else if (cIdx < customInputs.length) {
+    } else if (item && item !== "（今日尚無款式）" && cIdx < customInputs.length) {
       customInputs[cIdx].value = item;
       cIdx++;
     }
@@ -989,9 +1010,31 @@ function getActiveStyles() {
 }
 
 function renderSelect() {
+  const prevValue = cakeSelect.value;
   const styles = getActiveStyles();
-  cakeSelect.innerHTML = '<option value="">請選擇款式</option>' +
-    styles.map(s => `<option value="${s}">${s}</option>`).join("");
+  cakeSelect.innerHTML = "";
+
+  const defaultOpt = document.createElement("option");
+  defaultOpt.value = "";
+  defaultOpt.textContent = "請選擇款式";
+  cakeSelect.appendChild(defaultOpt);
+
+  styles.forEach(s => {
+    const opt = document.createElement("option");
+    if (s === "（今日尚無款式）") {
+      opt.value = "";
+      opt.textContent = s;
+      opt.disabled = true;
+    } else {
+      opt.value = s;
+      opt.textContent = s;
+    }
+    cakeSelect.appendChild(opt);
+  });
+
+  if (prevValue && styles.includes(prevValue) && prevValue !== "（今日尚無款式）") {
+    cakeSelect.value = prevValue;
+  }
 }
 
 function togglePreset(label) {
@@ -1068,7 +1111,7 @@ function renderAllAdminButtons() {
 
 customInputs.forEach(input => input.addEventListener("input", renderSelect));
 
-// 連點 3 下蛋糕圖示觸發密碼輸入彈窗
+// 連點 3 下觸發密碼驗證彈窗
 let clickCount = 0;
 let clickTimer = null;
 
@@ -1160,7 +1203,6 @@ document.getElementById("clearAllBtn").onclick = () => {
 
 // ==================== 從 Google 試算表 (GAS) 載入設定 ====================
 async function loadBurgerFromGAS() {
-  // 先嘗試從本地快取或內建設定載入
   let localCache = null;
   try {
     const raw = localStorage.getItem(STORAGE_KEY_BURGER);
@@ -1176,7 +1218,7 @@ async function loadBurgerFromGAS() {
     applyConfig(window.BURGER_CONFIG);
   }
 
-  // 嘗試從 Google Apps Script 雲端同步
+  // 從 Google Apps Script 雲端同步
   try {
     if (cloudSyncStatus) {
       cloudSyncStatus.innerHTML = '🔄 同步中...';
@@ -1194,8 +1236,8 @@ async function loadBurgerFromGAS() {
       if (data && data[CALENDAR_CATEGORY]) data = data[CALENDAR_CATEGORY];
 
       const cloudConfig = {
-        styles: Array.isArray(data.styles) ? data.styles : (data.styles ? String(data.styles).split(",") : null),
-        validDate: data.validDate || ""
+        styles: Array.isArray(data.styles) ? data.styles : (data.styles ? String(data.styles).split(",").map(s => s.trim()).filter(Boolean) : null),
+        validDate: normalizeDateStr(data.validDate)
       };
 
       if (!urlCfg && cloudConfig.styles && cloudConfig.styles.length > 0) {
@@ -1350,6 +1392,8 @@ copyHtmlBtn.onclick = async () => {
   clone.querySelector("#outputField").textContent = "";
   clone.querySelector("#adminPwdInput").value = "";
   clone.querySelector("#pwdError").textContent = "";
+  const existingFallback = clone.querySelector("#lineFallbackLink");
+  if (existingFallback) existingFallback.remove();
 
   clone.querySelectorAll(".custom-style-input").forEach((inp, idx) => {
     const customVal = customInputs[idx] ? customInputs[idx].value.trim() : "";
@@ -1387,6 +1431,7 @@ copyHtmlBtn.onclick = async () => {
 const form = document.getElementById("orderForm");
 const paidChk = document.getElementById("paidChk");
 const last5 = document.getElementById("last5");
+const phoneInput = document.getElementById("phone");
 const utensils2Chk = document.getElementById("utensils2Chk");
 const utensils5Chk = document.getElementById("utensils5Chk");
 const utensils10Chk = document.getElementById("utensils10Chk");
@@ -1411,11 +1456,24 @@ paidChk.addEventListener("change", () => {
 });
 
 last5.addEventListener("input", () => {
-  if (last5.value.trim().length > 0) {
+  const cleaned = normalizeInput(last5.value).replace(/\D/g, "").slice(0, 5);
+  if (last5.value !== cleaned) {
+    last5.value = cleaned;
+  }
+  if (cleaned.length > 0) {
     paidChk.checked = true;
     last5.required = true;
+  } else {
+    paidChk.checked = false;
+    last5.required = false;
   }
 });
+
+if (phoneInput) {
+  phoneInput.addEventListener("blur", () => {
+    phoneInput.value = normalizeInput(phoneInput.value);
+  });
+}
 
 form.addEventListener("change", updateTotal);
 
@@ -1442,9 +1500,9 @@ form.addEventListener("submit", function(event) {
   const message = [
     `🍔【${currentToday.short} 現貨漢堡盒預留需求】`,
     "",
-    "款式：" + data.get("cake"),
-    "訂購人：" + data.get("name"),
-    "聯絡電話：" + data.get("phone"),
+    "款式：" + (data.get("cake") || "").trim(),
+    "訂購人：" + (data.get("name") || "").trim(),
+    "聯絡電話：" + normalizeInput(data.get("phone") || ""),
     "預計取貨：" + data.get("pickup"),
     "",
     "【加購項目】",
@@ -1459,7 +1517,7 @@ form.addEventListener("submit", function(event) {
     "付款狀態：" + (isPaid ? "已付款" : "尚未付款"),
     "轉帳後五碼：" + (isPaid ? data.get("last5") : "尚未提供"),
     "",
-    "備註：" + (data.get("note") || "無"),
+    "備註：" + ((data.get("note") || "").trim() || "無"),
     "",
     "我了解需由店家確認款式及收到款項後，才算預留成功。"
   ].join("\n");
@@ -1471,15 +1529,19 @@ form.addEventListener("submit", function(event) {
   const lineWindow = window.open(lineURL, "_blank");
 
   if (!lineWindow) {
-    const fallback = document.createElement("a");
+    let fallback = document.getElementById("lineFallbackLink");
+    if (!fallback) {
+      fallback = document.createElement("a");
+      fallback.id = "lineFallbackLink";
+      fallback.target = "_blank";
+      fallback.rel = "noopener";
+      fallback.textContent = "點此開啟 LINE 並傳送訂購資料";
+      fallback.style.cssText =
+        "display:block;padding:12px;margin-top:10px;text-align:center;" +
+        "background:#d69b8c;color:white;border-radius:8px;font-weight:bold;text-decoration:none;";
+      form.insertAdjacentElement("afterend", fallback);
+    }
     fallback.href = lineURL;
-    fallback.target = "_blank";
-    fallback.rel = "noopener";
-    fallback.textContent = "點此開啟 LINE 並傳送訂購資料";
-    fallback.style.cssText =
-      "display:block;padding:12px;margin-top:10px;text-align:center;" +
-      "background:#d69b8c;color:white;border-radius:8px;font-weight:bold;";
-    form.insertAdjacentElement("afterend", fallback);
     fallback.focus();
   }
 });
