@@ -81,18 +81,25 @@
       border-radius: 12px;
       background: linear-gradient(135deg, #f8e1d8, #fff4ec);
       margin-bottom: 6px;
+    }
+    .hero-row {
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .hero-row + .hero-row {
+      margin-top: 3px;
     }
     .hero .emoji {
-      font-size: 30px;
+      font-size: 20px;
       line-height: 1;
       user-select: none;
       cursor: pointer;
       flex-shrink: 0;
       transition: transform 0.15s ease;
       -webkit-tap-highlight-color: transparent;
+      padding: 2px 4px;
     }
     .hero .emoji:hover {
       transform: scale(1.15);
@@ -101,7 +108,7 @@
       transform: scale(0.92);
     }
     .hero-text {
-      flex: 1;
+      width: 100%;
       min-width: 0;
     }
     .hero-text h1 {
@@ -109,7 +116,7 @@
       margin: 0;
     }
     .hero-text p {
-      margin: 1px 0 0;
+      margin: 0;
       font-size: 12px;
       color: #7a6054;
     }
@@ -602,13 +609,15 @@
 
 <!-- 頂部標題 -->
 <header class="hero">
-  <div class="emoji" id="secretTrigger">🎂</div>
   <div class="hero-text">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+    <div class="hero-row">
       <h1>現貨漢堡盒蛋糕 <span class="date-badge" id="dateBadge">今日限定</span></h1>
       <span id="cloudSyncStatus" class="cloud-status-badge syncing">🔄 連線中...</span>
     </div>
-    <p>請先於 LINE 確認款式還有現貨，再填寫預留資料 ♡</p>
+    <div class="hero-row">
+      <p>請先於 LINE 確認款式還有現貨，再填寫預留資料 ♡</p>
+      <div class="emoji" id="secretTrigger">🎂</div>
+    </div>
   </div>
 </header>
 
