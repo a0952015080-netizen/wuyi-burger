@@ -4,7 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <base target="_blank">
-  <title>現貨漢堡盒｜當日預留表單</title>
+  <title>現貨漢堡盒 當日預留表單</title>
+  <meta name="description" content="現貨漢堡盒 當日預留表單">
+
+  <!-- LINE / 社群分享預覽卡片 (Open Graph) 設定 -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="現貨漢堡盒 當日預留表單">
+  <meta property="og:description" content="現貨漢堡盒 當日預留表單">
+  <meta property="og:site_name" content="現貨漢堡盒 當日預留表單">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="現貨漢堡盒 當日預留表單">
+  <meta name="twitter:description" content="現貨漢堡盒 當日預留表單">
 
   <script>
     (function() {
@@ -233,12 +243,6 @@
     .pwd-icon {
       font-size: 28px;
       line-height: 1;
-      margin-bottom: 6px;
-    }
-    .pwd-title {
-      font-size: 15.5px;
-      font-weight: 700;
-      color: var(--brown);
       margin-bottom: 12px;
     }
     .pwd-input {
@@ -326,6 +330,7 @@
       border: 2px dashed var(--pink);
       border-radius: 12px;
       padding: 12px;
+      margin-top: 10px;
       margin-bottom: 8px;
     }
     .admin-title {
@@ -621,68 +626,6 @@
   </div>
 </header>
 
-<!-- 密碼輸入彈窗 -->
-<div class="modal-overlay" id="pwdModal" hidden>
-  <div class="pwd-card">
-    <div class="pwd-icon">🎂</div>
-    <div class="pwd-title">店家管理員身分驗證</div>
-    <input type="password" id="adminPwdInput" class="pwd-input" inputmode="numeric" placeholder="請輸入密碼" maxlength="10" autocomplete="off" />
-    <div class="pwd-error" id="pwdError"></div>
-    <div class="pwd-actions">
-      <button type="button" class="pwd-btn cancel" id="pwdCancelBtn">取消</button>
-      <button type="button" class="pwd-btn confirm" id="pwdConfirmBtn">確認送出</button>
-    </div>
-  </div>
-</div>
-
-<!-- 店家專用設定面板 -->
-<section class="admin-panel" id="adminPanel" hidden>
-  <div class="admin-title">
-    <span>🛠️ 店家每日款式設定（同步至試算表）</span>
-    <button type="button" id="closeAdmin" style="border:0;background:none;cursor:pointer;font-size:16px;">✕</button>
-  </div>
-
-  <div class="admin-subtitle">▸ 基本字母款（A～J）</div>
-  <div class="style-grid" id="gridLetters"></div>
-
-  <div class="admin-subtitle">▸ 編號細分款（A1～J4，點左側可整排全選）</div>
-  <div id="gridNumbers"></div>
-
-  <div class="admin-subtitle">▸ 熱門指定款</div>
-  <div class="style-grid grid-2" id="gridSpecials"></div>
-
-  <div class="admin-subtitle">▸ 自訂輸入款（最多 4 個，輸入即自動加入）</div>
-  <div class="custom-grid">
-    <input type="text" class="custom-style-input" placeholder="自訂款式 1">
-    <input type="text" class="custom-style-input" placeholder="自訂款式 2">
-    <input type="text" class="custom-style-input" placeholder="自訂款式 3">
-    <input type="text" class="custom-style-input" placeholder="自訂款式 4">
-  </div>
-
-  <div class="admin-quick">
-    <button type="button" id="presetAEBtn">預設 A～E</button>
-    <button type="button" id="presetAJBtn">全選 A～J</button>
-    <button type="button" id="presetA1E4Btn">選 A1～E4</button>
-    <button type="button" id="clearAllBtn">全部清空</button>
-  </div>
-
-  <label class="admin-lock-opt">
-    <input type="checkbox" id="lockDateChk" checked>
-    <span>🔒 綁定今日日期（隔天午夜 12 點後自動過期鎖定表單）</span>
-  </label>
-
-  <div class="admin-actions">
-    <button type="button" id="saveCloudBtn" class="primary">☁️ 儲存並同步至 Google 試算表（全客人生效）</button>
-    <button type="button" id="copyLinkBtn" class="secondary">🔗 複製專用網址連結（備用）</button>
-    <button type="button" id="copyHtmlBtn" class="secondary">📋 亦可產生並複製今日 HTML 程式碼</button>
-  </div>
-
-  <div class="copy-box" id="copyBox" hidden>
-    <div class="copy-status" id="copyStatus">✅ 處理完成！</div>
-    <textarea id="outputField" readonly onclick="this.select()"></textarea>
-  </div>
-</section>
-
 <!-- 過期時顯示的畫面（隔天自動鎖定表單） -->
 <section class="expired-card" id="expiredCard" hidden>
   <h2>⏰ 此預留表單已過期</h2>
@@ -801,6 +744,67 @@
     </div>
 
   </form>
+</div>
+
+<!-- 店家專用設定面板（連點 3 下蛋糕圖示驗證後開啟） -->
+<section class="admin-panel" id="adminPanel" hidden>
+  <div class="admin-title">
+    <span>🛠️ 店家每日款式設定（同步至試算表）</span>
+    <button type="button" id="closeAdmin" style="border:0;background:none;cursor:pointer;font-size:16px;">✕</button>
+  </div>
+
+  <div class="admin-subtitle">▸ 基本字母款（A～J）</div>
+  <div class="style-grid" id="gridLetters"></div>
+
+  <div class="admin-subtitle">▸ 編號細分款（A1～J4，點左側可整排全選）</div>
+  <div id="gridNumbers"></div>
+
+  <div class="admin-subtitle">▸ 熱門指定款</div>
+  <div class="style-grid grid-2" id="gridSpecials"></div>
+
+  <div class="admin-subtitle">▸ 自訂輸入款（最多 4 個，輸入即自動加入）</div>
+  <div class="custom-grid">
+    <input type="text" class="custom-style-input" placeholder="自訂款式 1">
+    <input type="text" class="custom-style-input" placeholder="自訂款式 2">
+    <input type="text" class="custom-style-input" placeholder="自訂款式 3">
+    <input type="text" class="custom-style-input" placeholder="自訂款式 4">
+  </div>
+
+  <div class="admin-quick">
+    <button type="button" id="presetAEBtn">預設 A～E</button>
+    <button type="button" id="presetAJBtn">全選 A～J</button>
+    <button type="button" id="presetA1E4Btn">選 A1～E4</button>
+    <button type="button" id="clearAllBtn">全部清空</button>
+  </div>
+
+  <label class="admin-lock-opt">
+    <input type="checkbox" id="lockDateChk" checked>
+    <span>🔒 綁定今日日期（隔天午夜 12 點後自動過期鎖定表單）</span>
+  </label>
+
+  <div class="admin-actions">
+    <button type="button" id="saveCloudBtn" class="primary">☁️ 儲存並同步至 Google 試算表（全客人生效）</button>
+    <button type="button" id="copyLinkBtn" class="secondary">🔗 複製專用網址連結（備用）</button>
+    <button type="button" id="copyHtmlBtn" class="secondary">📋 亦可產生並複製今日 HTML 程式碼</button>
+  </div>
+
+  <div class="copy-box" id="copyBox" hidden>
+    <div class="copy-status" id="copyStatus">✅ 處理完成！</div>
+    <textarea id="outputField" readonly onclick="this.select()"></textarea>
+  </div>
+</section>
+
+<!-- 密碼輸入彈窗 -->
+<div class="modal-overlay" id="pwdModal" hidden>
+  <div class="pwd-card">
+    <div class="pwd-icon">🎂</div>
+    <input type="password" id="adminPwdInput" class="pwd-input" inputmode="numeric" placeholder="請輸入密碼" maxlength="10" autocomplete="off" />
+    <div class="pwd-error" id="pwdError"></div>
+    <div class="pwd-actions">
+      <button type="button" class="pwd-btn cancel" id="pwdCancelBtn">取消</button>
+      <button type="button" class="pwd-btn confirm" id="pwdConfirmBtn">確認送出</button>
+    </div>
+  </div>
 </div>
 
 </div>
